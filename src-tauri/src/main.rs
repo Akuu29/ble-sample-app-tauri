@@ -6,7 +6,11 @@ use btleplug::platform::{Adapter, Manager};
 use std::time::Duration;
 use tokio::time;
 
-// mod bluetooth;
+use bluetooth::BleHelper;
+use manage_thread::create_thread;
+
+mod bluetooth;
+mod manage_thread;
 
 /// アドバタイズしているデバイスの一覧を取得する
 #[tauri::command]
@@ -56,10 +60,15 @@ async fn get_device_name(central: Adapter) -> Vec<String> {
     device_name
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // use tauri::async_runtime::block_on;
 
+    // スレッド作成
+    let task = create_thread().await;
+
     tauri::Builder::default()
+        .manage(task)
         .invoke_handler(tauri::generate_handler![get_devices])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
