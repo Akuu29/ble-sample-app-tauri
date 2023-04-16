@@ -3,7 +3,10 @@
 
 use btleplug::api::{Central, Manager as _, Peripheral, ScanFilter};
 use btleplug::platform::{Adapter, Manager};
+use std::sync::Arc;
 use std::time::Duration;
+use tauri::State;
+use tokio::sync::{Mutex, MutexGuard};
 use tokio::time;
 
 use bluetooth::BleHelper;
@@ -14,7 +17,7 @@ mod manage_thread;
 
 /// アドバタイズしているデバイスの一覧を取得する
 #[tauri::command]
-async fn get_devices() -> Result<Vec<String>, String> {
+async fn get_devices(state: State<'_, Arc<Mutex<BleHelper>>>) -> Result<Vec<String>, String> {
     let manager = Manager::new().await.unwrap();
 
     // アダプタの作成
@@ -35,20 +38,36 @@ async fn get_devices() -> Result<Vec<String>, String> {
     time::sleep(Duration::from_secs(5)).await;
 
     // 取得したデバイスの名称
-    let device_name = get_device_name(central).await;
+    let device_name_list = get_device_name(&central).await;
 
-    dbg!(&device_name);
-    Ok(device_name)
+    let devices = state.lock().await;
+    // BleHelperのperipheralsをアップデート
+    update_peripherals(central, devices).await;
+
+    Ok(device_name_list)
+}
+
+/// BleHelperのメンバperipheralsをアップデート
+async fn update_peripherals(central: Adapter, mut devices: MutexGuard<'_, BleHelper>) {
+    let mut device_list = vec![];
+    for p in central.peripherals().await.unwrap() {
+        device_list.push(p);
+    }
+
+    if device_list.len() > 0 {
+        devices.peripherals = Some(device_list);
+        dbg!(&devices);
+    }
 }
 
 /// デバイスの名称を取得
-async fn get_device_name(central: Adapter) -> Vec<String> {
-    let mut device_name = vec![];
+async fn get_device_name(central: &Adapter) -> Vec<String> {
+    let mut device_name_list = vec![];
     for p in central.peripherals().await.unwrap() {
         let properties = p.properties().await.unwrap();
         if let Some(data) = properties {
             if let Some(name) = data.local_name {
-                device_name.push(name);
+                device_name_list.push(name);
             } else {
                 continue;
             }
@@ -57,7 +76,7 @@ async fn get_device_name(central: Adapter) -> Vec<String> {
         }
     }
 
-    device_name
+    device_name_list
 }
 
 #[tokio::main]
