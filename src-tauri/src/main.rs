@@ -19,7 +19,6 @@ mod manage_thread;
 #[tauri::command]
 async fn get_devices(state: State<'_, Arc<Mutex<BleHelper>>>) -> Result<Vec<String>, String> {
     let manager = Manager::new().await.unwrap();
-
     // アダプタの作成
     let result_get_adapters = manager.adapters().await;
     let adapters = match result_get_adapters {
@@ -79,6 +78,37 @@ async fn get_device_name(central: &Adapter) -> Vec<String> {
     device_name_list
 }
 
+/// デバイスと接続
+#[tauri::command]
+async fn connect_device(
+    state: State<'_, Arc<Mutex<BleHelper>>>,
+    device_name: String,
+) -> Result<(), String> {
+    let peripherals = state.lock().await.peripherals.as_ref().unwrap().clone();
+    // let mut is_connected = Ok(());
+    let mut is_connected: Result<(), String> = Err("Failed to connect device ".to_string());
+    for p in peripherals {
+        // デバイス名一致の場合
+        let properties = p.properties().await.unwrap();
+        if let Some(data) = properties {
+            if let Some(local_name) = data.local_name {
+                if local_name == device_name {
+                    // 接続
+                    match p.connect().await {
+                        Ok(_) => {
+                            is_connected = Ok(());
+                            break;
+                        }
+                        Err(_) => break,
+                    };
+                }
+            }
+        }
+    }
+
+    is_connected
+}
+
 #[tokio::main]
 async fn main() {
     // use tauri::async_runtime::block_on;
@@ -88,7 +118,7 @@ async fn main() {
 
     tauri::Builder::default()
         .manage(task)
-        .invoke_handler(tauri::generate_handler![get_devices])
+        .invoke_handler(tauri::generate_handler![get_devices, connect_device])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
